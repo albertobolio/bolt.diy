@@ -365,6 +365,7 @@ export default function SettingsTab() {
 
                     if (!valid) {
                       toast.error('Current password is incorrect');
+                      setIsSavingPassword(false);
 
                       return;
                     }
