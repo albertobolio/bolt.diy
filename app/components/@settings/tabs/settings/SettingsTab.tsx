@@ -6,7 +6,7 @@ import { classNames } from '~/utils/classNames';
 import { Switch } from '~/components/ui/Switch';
 import type { UserProfile } from '~/components/@settings/core/types';
 import { isMac } from '~/utils/os';
-import { sudoPasswordHashStore, setSudoPassword } from '~/lib/stores/settings';
+import { sudoPasswordHashStore, setSudoPassword, verifySudoPassword } from '~/lib/stores/settings';
 
 // Helper to get modifier key symbols/text
 const getModifierSymbol = (modifier: string): string => {
@@ -37,6 +37,7 @@ export default function SettingsTab() {
 
   // Sudo mode state
   const sudoPasswordHash = useStore(sudoPasswordHashStore);
+  const [currentSudoPassword, setCurrentSudoPassword] = useState('');
   const [newSudoPassword, setNewSudoPassword] = useState('');
   const [confirmSudoPassword, setConfirmSudoPassword] = useState('');
   const [isSavingPassword, setIsSavingPassword] = useState(false);
@@ -241,6 +242,27 @@ export default function SettingsTab() {
         </p>
 
         <div className="space-y-3">
+          {/* Current password field – required when an existing password is set */}
+          {sudoPasswordHash && (
+            <div>
+              <label className="block text-xs text-bolt-elements-textSecondary mb-1">Current Password</label>
+              <input
+                type="password"
+                value={currentSudoPassword}
+                onChange={(e) => setCurrentSudoPassword(e.target.value)}
+                placeholder="Enter current password"
+                className={classNames(
+                  'w-full px-3 py-2 rounded-lg text-sm',
+                  'bg-[#FAFAFA] dark:bg-[#1A1A1A]',
+                  'border border-[#E5E5E5] dark:border-[#2A2A2A]',
+                  'text-bolt-elements-textPrimary placeholder-gray-400 dark:placeholder-gray-600',
+                  'focus:outline-none focus:ring-2 focus:ring-purple-500/30',
+                  'transition-all duration-200',
+                )}
+              />
+            </div>
+          )}
+
           <div>
             <label className="block text-xs text-bolt-elements-textSecondary mb-1">
               {sudoPasswordHash ? 'New Password' : 'Set Password'}
@@ -281,12 +303,29 @@ export default function SettingsTab() {
 
           <div className="flex items-center gap-2 pt-1">
             <button
-              disabled={!newSudoPassword || newSudoPassword !== confirmSudoPassword || isSavingPassword}
+              disabled={
+                !newSudoPassword ||
+                newSudoPassword !== confirmSudoPassword ||
+                (!!sudoPasswordHash && !currentSudoPassword) ||
+                isSavingPassword
+              }
               onClick={async () => {
                 setIsSavingPassword(true);
 
                 try {
+                  if (sudoPasswordHash) {
+                    const valid = await verifySudoPassword(currentSudoPassword);
+
+                    if (!valid) {
+                      toast.error('Current password is incorrect');
+                      setIsSavingPassword(false);
+
+                      return;
+                    }
+                  }
+
                   await setSudoPassword(newSudoPassword);
+                  setCurrentSudoPassword('');
                   setNewSudoPassword('');
                   setConfirmSudoPassword('');
                   toast.success('Sudo password saved');
@@ -317,14 +356,35 @@ export default function SettingsTab() {
 
             {sudoPasswordHash && (
               <button
+                disabled={!currentSudoPassword || isSavingPassword}
                 onClick={async () => {
-                  await setSudoPassword('');
-                  toast.success('Sudo password removed');
+                  setIsSavingPassword(true);
+
+                  try {
+                    const valid = await verifySudoPassword(currentSudoPassword);
+
+                    if (!valid) {
+                      toast.error('Current password is incorrect');
+
+                      return;
+                    }
+
+                    await setSudoPassword('');
+                    setCurrentSudoPassword('');
+                    setNewSudoPassword('');
+                    setConfirmSudoPassword('');
+                    toast.success('Sudo password removed');
+                  } catch {
+                    toast.error('Failed to remove sudo password');
+                  } finally {
+                    setIsSavingPassword(false);
+                  }
                 }}
                 className={classNames(
                   'px-4 py-2 rounded-lg text-sm font-medium',
                   'text-red-500 dark:text-red-400',
                   'hover:bg-red-50 dark:hover:bg-red-500/10',
+                  'disabled:opacity-50 disabled:cursor-not-allowed',
                   'transition-colors duration-200',
                 )}
               >
