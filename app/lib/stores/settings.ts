@@ -311,12 +311,16 @@ export const hashPassword = async (password: string, saltHex?: string): Promise<
   const encoder = new TextEncoder();
   const passwordData = encoder.encode(password);
 
-  let saltBytes: Uint8Array;
+  let saltBytes: Uint8Array<ArrayBuffer>;
 
   if (saltHex) {
-    saltBytes = new Uint8Array(saltHex.match(/.{1,2}/g)!.map((b) => parseInt(b, 16)));
+    saltBytes = new Uint8Array(new ArrayBuffer(saltHex.length / 2));
+    saltHex.match(/.{1,2}/g)!.forEach((b, i) => {
+      saltBytes[i] = parseInt(b, 16);
+    });
   } else {
-    saltBytes = crypto.getRandomValues(new Uint8Array(SALT_LENGTH));
+    saltBytes = new Uint8Array(new ArrayBuffer(SALT_LENGTH));
+    crypto.getRandomValues(saltBytes);
   }
 
   const keyMaterial = await crypto.subtle.importKey('raw', passwordData, 'PBKDF2', false, ['deriveBits']);
