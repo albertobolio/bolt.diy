@@ -131,6 +131,7 @@ const SETTINGS_KEYS = {
   EVENT_LOGS: 'isEventLogsEnabled',
   PROMPT_ID: 'promptId',
   DEVELOPER_MODE: 'isDeveloperMode',
+  SUDO_PASSWORD_HASH: 'bolt_sudo_password_hash',
 } as const;
 
 // Initialize settings from localStorage or defaults
@@ -291,6 +292,53 @@ export const setDeveloperMode = (value: boolean) => {
   if (isBrowser) {
     localStorage.setItem(SETTINGS_KEYS.DEVELOPER_MODE, JSON.stringify(value));
   }
+};
+
+// Sudo mode password store
+export const sudoPasswordHashStore = atom<string | null>(
+  isBrowser ? localStorage.getItem(SETTINGS_KEYS.SUDO_PASSWORD_HASH) : null,
+);
+
+// Hash a password using SHA-256 (Web Crypto API)
+export const hashPassword = async (password: string): Promise<string> => {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(password);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+
+  return Array.from(new Uint8Array(hashBuffer))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+};
+
+// Set sudo password (pass empty string to clear)
+export const setSudoPassword = async (password: string): Promise<void> => {
+  if (!isBrowser) {
+    return;
+  }
+
+  if (!password) {
+    sudoPasswordHashStore.set(null);
+    localStorage.removeItem(SETTINGS_KEYS.SUDO_PASSWORD_HASH);
+
+    return;
+  }
+
+  const hash = await hashPassword(password);
+  sudoPasswordHashStore.set(hash);
+  localStorage.setItem(SETTINGS_KEYS.SUDO_PASSWORD_HASH, hash);
+};
+
+// Verify sudo password – returns true if no password is set
+export const verifySudoPassword = async (password: string): Promise<boolean> => {
+  const storedHash = sudoPasswordHashStore.get();
+
+  if (!storedHash) {
+    return true;
+  }
+
+  const hash = await hashPassword(password);
+
+  return hash === storedHash;
 };
 
 // First, let's define the SettingsStore interface

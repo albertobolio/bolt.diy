@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { toast } from 'react-toastify';
+import { useStore } from '@nanostores/react';
 import { classNames } from '~/utils/classNames';
 import { Switch } from '~/components/ui/Switch';
 import type { UserProfile } from '~/components/@settings/core/types';
 import { isMac } from '~/utils/os';
+import { sudoPasswordHashStore, setSudoPassword } from '~/lib/stores/settings';
 
 // Helper to get modifier key symbols/text
 const getModifierSymbol = (modifier: string): string => {
@@ -32,6 +34,12 @@ export default function SettingsTab() {
           timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         };
   });
+
+  // Sudo mode state
+  const sudoPasswordHash = useStore(sudoPasswordHashStore);
+  const [newSudoPassword, setNewSudoPassword] = useState('');
+  const [confirmSudoPassword, setConfirmSudoPassword] = useState('');
+  const [isSavingPassword, setIsSavingPassword] = useState(false);
 
   useEffect(() => {
     setCurrentTimezone(Intl.DateTimeFormat().resolvedOptions().timeZone);
@@ -208,6 +216,126 @@ export default function SettingsTab() {
               </kbd>
             </div>
           </div>
+        </div>
+      </motion.div>
+
+      {/* Sudo Mode (Developer Mode Protection) */}
+      <motion.div
+        className="bg-white dark:bg-[#0A0A0A] rounded-lg shadow-sm dark:shadow-none p-4"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.4 }}
+      >
+        <div className="flex items-center gap-2 mb-1">
+          <div className="i-ph:lock-key-fill w-4 h-4 text-purple-500" />
+          <span className="text-sm font-medium text-bolt-elements-textPrimary">Sudo Mode</span>
+          {sudoPasswordHash && (
+            <span className="ml-auto text-xs font-medium px-2 py-0.5 rounded-full bg-green-500/10 text-green-600 dark:text-green-400">
+              Protected
+            </span>
+          )}
+        </div>
+        <p className="text-xs text-bolt-elements-textSecondary mb-4">
+          Set a password to protect Developer Mode. When a sudo password is set, it will be required each time you
+          enable Developer Mode.
+        </p>
+
+        <div className="space-y-3">
+          <div>
+            <label className="block text-xs text-bolt-elements-textSecondary mb-1">
+              {sudoPasswordHash ? 'New Password' : 'Set Password'}
+            </label>
+            <input
+              type="password"
+              value={newSudoPassword}
+              onChange={(e) => setNewSudoPassword(e.target.value)}
+              placeholder={sudoPasswordHash ? 'Enter new password' : 'Enter password'}
+              className={classNames(
+                'w-full px-3 py-2 rounded-lg text-sm',
+                'bg-[#FAFAFA] dark:bg-[#1A1A1A]',
+                'border border-[#E5E5E5] dark:border-[#2A2A2A]',
+                'text-bolt-elements-textPrimary placeholder-gray-400 dark:placeholder-gray-600',
+                'focus:outline-none focus:ring-2 focus:ring-purple-500/30',
+                'transition-all duration-200',
+              )}
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs text-bolt-elements-textSecondary mb-1">Confirm Password</label>
+            <input
+              type="password"
+              value={confirmSudoPassword}
+              onChange={(e) => setConfirmSudoPassword(e.target.value)}
+              placeholder="Confirm password"
+              className={classNames(
+                'w-full px-3 py-2 rounded-lg text-sm',
+                'bg-[#FAFAFA] dark:bg-[#1A1A1A]',
+                'border border-[#E5E5E5] dark:border-[#2A2A2A]',
+                'text-bolt-elements-textPrimary placeholder-gray-400 dark:placeholder-gray-600',
+                'focus:outline-none focus:ring-2 focus:ring-purple-500/30',
+                'transition-all duration-200',
+              )}
+            />
+          </div>
+
+          <div className="flex items-center gap-2 pt-1">
+            <button
+              disabled={!newSudoPassword || newSudoPassword !== confirmSudoPassword || isSavingPassword}
+              onClick={async () => {
+                setIsSavingPassword(true);
+
+                try {
+                  await setSudoPassword(newSudoPassword);
+                  setNewSudoPassword('');
+                  setConfirmSudoPassword('');
+                  toast.success('Sudo password saved');
+                } catch {
+                  toast.error('Failed to save sudo password');
+                } finally {
+                  setIsSavingPassword(false);
+                }
+              }}
+              className={classNames(
+                'px-4 py-2 rounded-lg text-sm font-medium',
+                'bg-purple-500 text-white hover:bg-purple-600',
+                'disabled:opacity-50 disabled:cursor-not-allowed',
+                'transition-colors duration-200',
+              )}
+            >
+              {isSavingPassword ? (
+                <span className="flex items-center gap-2">
+                  <div className="i-ph:spinner-gap-bold animate-spin w-4 h-4" />
+                  Saving…
+                </span>
+              ) : sudoPasswordHash ? (
+                'Change Password'
+              ) : (
+                'Set Password'
+              )}
+            </button>
+
+            {sudoPasswordHash && (
+              <button
+                onClick={async () => {
+                  await setSudoPassword('');
+                  toast.success('Sudo password removed');
+                }}
+                className={classNames(
+                  'px-4 py-2 rounded-lg text-sm font-medium',
+                  'text-red-500 dark:text-red-400',
+                  'hover:bg-red-50 dark:hover:bg-red-500/10',
+                  'transition-colors duration-200',
+                )}
+              >
+                Remove Password
+              </button>
+            )}
+          </div>
+
+          {newSudoPassword && confirmSudoPassword && newSudoPassword !== confirmSudoPassword && (
+            <p className="text-xs text-red-500 dark:text-red-400">Passwords do not match</p>
+          )}
         </div>
       </motion.div>
     </div>

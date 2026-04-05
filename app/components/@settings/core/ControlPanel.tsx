@@ -14,9 +14,11 @@ import { useDebugStatus } from '~/lib/hooks/useDebugStatus';
 import {
   tabConfigurationStore,
   developerModeStore,
+  sudoPasswordHashStore,
   setDeveloperMode,
   resetTabConfiguration,
 } from '~/lib/stores/settings';
+import { SudoPasswordDialog } from '~/components/@settings/shared/components/SudoPasswordDialog';
 import { profileStore } from '~/lib/stores/profile';
 import type { TabType, TabVisibilityConfig, Profile } from './types';
 import { TAB_LABELS, DEFAULT_TAB_CONFIG } from './constants';
@@ -161,7 +163,11 @@ export const ControlPanel = ({ open, onClose }: ControlPanelProps) => {
   // Store values
   const tabConfiguration = useStore(tabConfigurationStore);
   const developerMode = useStore(developerModeStore);
+  const sudoPasswordHash = useStore(sudoPasswordHashStore);
   const profile = useStore(profileStore) as Profile;
+
+  // Sudo password dialog state
+  const [showSudoDialog, setShowSudoDialog] = useState(false);
 
   // Status hooks
   const { hasUpdate, currentVersion, acknowledgeUpdate } = useUpdateCheck();
@@ -294,8 +300,13 @@ export const ControlPanel = ({ open, onClose }: ControlPanelProps) => {
   };
 
   const handleDeveloperModeChange = (checked: boolean) => {
-    console.log('Developer mode changed:', checked);
-    setDeveloperMode(checked);
+    if (checked && sudoPasswordHash) {
+      // A sudo password is set – show the verification dialog first
+      setShowSudoDialog(true);
+    } else {
+      console.log('Developer mode changed:', checked);
+      setDeveloperMode(checked);
+    }
   };
 
   // Add effect to log developer mode changes
@@ -550,6 +561,16 @@ export const ControlPanel = ({ open, onClose }: ControlPanelProps) => {
           </RadixDialog.Content>
         </div>
       </RadixDialog.Portal>
+
+      {/* Sudo password verification dialog */}
+      <SudoPasswordDialog
+        open={showSudoDialog}
+        onVerified={() => {
+          setShowSudoDialog(false);
+          setDeveloperMode(true);
+        }}
+        onCancel={() => setShowSudoDialog(false)}
+      />
     </RadixDialog.Root>
   );
 };
