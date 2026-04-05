@@ -131,6 +131,7 @@ const SETTINGS_KEYS = {
   EVENT_LOGS: 'isEventLogsEnabled',
   PROMPT_ID: 'promptId',
   DEVELOPER_MODE: 'isDeveloperMode',
+  SUDO_PASSWORD_HASH: 'bolt_sudo_password_hash',
 } as const;
 
 // Initialize settings from localStorage or defaults
@@ -291,6 +292,93 @@ export const setDeveloperMode = (value: boolean) => {
   if (isBrowser) {
     localStorage.setItem(SETTINGS_KEYS.DEVELOPER_MODE, JSON.stringify(value));
   }
+};
+
+// Sudo mode password store
+export const sudoPasswordHashStore = atom<string | null>(
+  isBrowser ? localStorage.getItem(SETTINGS_KEYS.SUDO_PASSWORD_HASH) : null,
+);
+
+const PBKDF2_ITERATIONS = 100_000;
+const SALT_LENGTH = 16;
+
+/*
+ * Hash a password using PBKDF2-SHA-256 with a random salt.
+ * Returns a "saltHex:hashHex" string suitable for storage.
+ * When `saltHex` is provided it is reused (for verification).
+ */
+export const hashPassword = async (password: string, saltHex?: string): Promise<string> => {
+  const encoder = new TextEncoder();
+  const passwordData = encoder.encode(password);
+
+  let saltBytes: Uint8Array<ArrayBuffer>;
+
+  if (saltHex) {
+    saltBytes = new Uint8Array(new ArrayBuffer(saltHex.length / 2));
+    saltHex.match(/.{1,2}/g)!.forEach((b, i) => {
+      saltBytes[i] = parseInt(b, 16);
+    });
+  } else {
+    saltBytes = new Uint8Array(new ArrayBuffer(SALT_LENGTH));
+    crypto.getRandomValues(saltBytes);
+  }
+
+  const keyMaterial = await crypto.subtle.importKey('raw', passwordData, 'PBKDF2', false, ['deriveBits']);
+
+  const hashBuffer = await crypto.subtle.deriveBits(
+    { name: 'PBKDF2', salt: saltBytes, iterations: PBKDF2_ITERATIONS, hash: 'SHA-256' },
+    keyMaterial,
+    256,
+  );
+
+  const toHex = (bytes: Uint8Array) =>
+    Array.from(bytes)
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('');
+
+  return `${toHex(saltBytes)}:${toHex(new Uint8Array(hashBuffer))}`;
+};
+
+// Set sudo password (pass empty string to clear)
+export const setSudoPassword = async (password: string): Promise<void> => {
+  if (!isBrowser) {
+    return;
+  }
+
+  if (!password) {
+    sudoPasswordHashStore.set(null);
+    localStorage.removeItem(SETTINGS_KEYS.SUDO_PASSWORD_HASH);
+
+    return;
+  }
+
+  const stored = await hashPassword(password);
+  sudoPasswordHashStore.set(stored);
+  localStorage.setItem(SETTINGS_KEYS.SUDO_PASSWORD_HASH, stored);
+};
+
+// Verify sudo password – returns true if no password is set
+export const verifySudoPassword = async (password: string): Promise<boolean> => {
+  const stored = sudoPasswordHashStore.get();
+
+  if (!stored) {
+    return true;
+  }
+
+  const colonIndex = stored.indexOf(':');
+
+  if (colonIndex === -1) {
+    return false;
+  }
+
+  const saltHex = stored.slice(0, colonIndex);
+  const storedHash = stored.slice(colonIndex + 1);
+
+  // Re-derive with the same salt and compare
+  const recomputed = await hashPassword(password, saltHex);
+  const recomputedHash = recomputed.slice(recomputed.indexOf(':') + 1);
+
+  return recomputedHash === storedHash;
 };
 
 // First, let's define the SettingsStore interface
